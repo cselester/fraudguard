@@ -5,39 +5,150 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FraudGuard</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .status-message {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            display: none;
+        }
+
+        .status-success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+
+        .status-warning {
+            background-color: #fff3cd;
+            border-color: #ffeeba;
+            color: #856404;
+        }
+
+        .status-danger {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+    </style>
 </head>
 
 <body>
-    <h2>Enter Transaction Details</h2>
-    <form id="transaction-form">
-        <label>User ID:</label>
-        <input type="text" id="userid" required><br><br>
+    <div class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h2 class="mb-0">New Transaction</h2>
+                    </div>
+                    <div class="card-body">
+                        <form id="transaction-form">
+                            <div class="mb-3">
+                                <label for="userid" class="form-label">User ID:</label>
+                                <input type="text" class="form-control" id="userid" required>
+                            </div>
 
-        <label>Amount:</label>
-        <input type="number" id="amount" required><br><br>
+                            <div class="mb-3">
+                                <label for="amount" class="form-label">Amount ($):</label>
+                                <input type="number" class="form-control" id="amount" step="0.01" min="0" required>
+                                <div class="form-text text-danger">Warning: Transactions over $10,000 will require
+                                    additional review.</div>
+                            </div>
 
-        <button type="submit">Submit</button>
-    </form>
+                            <button type="submit" class="btn btn-primary">Submit Transaction</button>
+                        </form>
 
-    <p id="fraud-status"></p>
+                        <div id="status-message" class="status-message mt-3">
+                            <h4 id="status-title" class="mb-2"></h4>
+                            <p id="status-details" class="mb-0"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         document.getElementById("transaction-form").addEventListener("submit", function (event) {
             event.preventDefault();
 
-            let userid = document.getElementById("userid").value;
-            let amount = document.getElementById("amount").value;
+            const userid = document.getElementById("userid").value;
+            const amount = parseFloat(document.getElementById("amount").value);
+
+            // Disable submit button and show loading state
+            const submitButton = this.querySelector('button[type="submit"]');
+            submitButton.disabled = true;
+            submitButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
 
             fetch("/", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ userid, amount })
             })
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('HTTP error! status: ${response.status}');
+                    }
+                    return response.json();
+                })
                 .then(data => {
-                    document.getElementById("fraud-status").innerText = data.fraud_detected ? "Fraudulent Transaction!" : "Transaction Safe!";
+                    const statusMessage = document.getElementById("status-message");
+                    const statusTitle = document.getElementById("status-title");
+                    const statusDetails = document.getElementById("status-details");
+
+                    // Remove any existing classes
+                    statusMessage.classList.remove("status-success", "status-warning", "status-danger");
+
+                    if (data.fraud_detected) {
+                        // Transaction flagged as fraudulent
+                        statusMessage.classList.add("status-danger");
+                        statusTitle.innerText = "Transaction Flagged for Review";
+                        statusDetails.innerText = "This transaction has been flagged as potentially fraudulent and requires administrative review. Our team will review it shortly.";
+                    } else if (!data.success) {
+                        // Transaction failed
+                        statusMessage.classList.add("status-danger");
+                        statusTitle.innerText = "Transaction Failed";
+                        statusDetails.innerText = data.error || "An error occurred while processing your transaction.";
+                    } else {
+                        // Transaction successful
+                        statusMessage.classList.add("status-success");
+                        statusTitle.innerText = "Transaction Successful";
+                        statusDetails.innerText = "Your transaction has been processed successfully.";
+                        this.reset(); // Only reset form on success
+                    }
+
+                    statusMessage.style.display = "block";
+                })
+                .catch(error => {
+                    const statusMessage = document.getElementById("status-message");
+                    const statusTitle = document.getElementById("status-title");
+                    const statusDetails = document.getElementById("status-details");
+
+                    statusMessage.classList.remove("status-success", "status-warning", "status-danger");
+                    statusMessage.classList.add("status-danger");
+                    statusTitle.innerText = "Error";
+                    statusDetails.innerText = "An error occurred while processing your transaction. Please try again.";
+                    statusMessage.style.display = "block";
+                })
+                .finally(() => {
+                    // Re-enable submit button
+                    submitButton.disabled = false;
+                    submitButton.innerHTML = "Submit Transaction";
                 });
+        });
+
+        // Add input validation for amount
+        document.getElementById("amount").addEventListener("input", function (e) {
+            const amount = parseFloat(this.value);
+            const warningText = this.parentElement.querySelector(".form-text");
+
+            if (amount >= 10000) {
+                warningText.classList.add("text-danger", "fw-bold");
+            } else {
+                warningText.classList.remove("text-danger", "fw-bold");
+            }
         });
     </script>
 </body>
