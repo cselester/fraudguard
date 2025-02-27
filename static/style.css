@@ -1,0 +1,18 @@
+/*CSS for frontend*/
+body {
+  font-family: Arial, sans-serif;
+  text-align: center;
+  margin: 50px;
+}
+
+input {
+  padding: 10px;
+  margin: 5px;
+}
+
+button {
+  background-color: blue;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+}
