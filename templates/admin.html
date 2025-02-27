@@ -15,6 +15,14 @@
         .pending {
             background-color: #fff3e6;
         }
+        .declined {
+            background-color: #ffcccc;
+        }
+        .fraud-flags {
+            font-size: 0.9em;
+            color: #dc3545;
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
@@ -32,7 +40,7 @@
         
         <!-- Statistics Cards -->
         <div class="row mb-4">
-            <div class="col-md-3">
+            <div class="col">
                 <div class="card bg-primary text-white">
                     <div class="card-body">
                         <h5 class="card-title">Total Transactions</h5>
@@ -40,7 +48,7 @@
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col">
                 <div class="card bg-warning text-dark">
                     <div class="card-body">
                         <h5 class="card-title">Pending Review</h5>
@@ -48,7 +56,7 @@
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col">
                 <div class="card bg-success text-white">
                     <div class="card-body">
                         <h5 class="card-title">Approved</h5>
@@ -56,11 +64,19 @@
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col">
                 <div class="card bg-danger text-white">
                     <div class="card-body">
                         <h5 class="card-title">Flagged as Fraud</h5>
                         <h3 class="card-text">{{ stats.fraudulent }}</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card bg-dark text-white">
+                    <div class="card-body">
+                        <h5 class="card-title">Declined</h5>
+                        <h3 class="card-text">{{ stats.declined }}</h3>
                     </div>
                 </div>
             </div>
@@ -77,20 +93,27 @@
                         <th>Location</th>
                         <th>Timestamp</th>
                         <th>Status</th>
+                        <th>Fraud Flags</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for transaction in transactions %}
-                    <tr class="{{ 'fraud-alert' if transaction.is_fraudulent and not transaction.is_approved else 'approved' if transaction.is_approved else 'pending' }}">
+                    <tr class="{{ 'declined' if transaction.is_declined else 'fraud-alert' if transaction.is_fraudulent and not transaction.is_approved else 'approved' if transaction.is_approved else 'pending' }}">
                         <td>{{ transaction.id }}</td>
                         <td>{{ transaction.userid }}</td>
                         <td>${{ "%.2f"|format(transaction.amount) }}</td>
                         <td>{{ transaction.location }}</td>
                         <td>{{ transaction.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
                         <td>
-                            {% if transaction.is_approved %}
+                            {% if transaction.is_declined %}
+                                <span class="badge bg-dark">Declined</span>
+                            {% elif transaction.is_approved %}
                                 <span class="badge bg-success">Approved</span>
+                                {% if transaction.approval_timestamp %}
+                                <br>
+                                <small>{{ transaction.approval_timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</small>
+                                {% endif %}
                             {% elif transaction.is_fraudulent %}
                                 <span class="badge bg-danger">Flagged</span>
                             {% else %}
@@ -98,10 +121,24 @@
                             {% endif %}
                         </td>
                         <td>
-                            {% if not transaction.is_approved %}
-                            <form action="{{ url_for('admin_approve_transaction', transaction_id=transaction.id) }}" method="POST" style="display: inline;">
-                                <button type="submit" class="btn btn-success btn-sm">Approve</button>
-                            </form>
+                            {% if transaction.fraud_flags %}
+                                <div class="fraud-flags">
+                                    {% for flag in transaction.fraud_flags|fromjson %}
+                                        <div>• {{ flag }}</div>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if not transaction.is_approved and not transaction.is_declined %}
+                            <div class="btn-group">
+                                <form action="{{ url_for('admin_approve_transaction', transaction_id=transaction.id) }}" method="POST" style="display: inline;">
+                                    <button type="submit" class="btn btn-success btn-sm">Approve</button>
+                                </form>
+                                <form action="{{ url_for('admin_decline_transaction', transaction_id=transaction.id) }}" method="POST" style="display: inline;">
+                                    <button type="submit" class="btn btn-danger btn-sm ms-1">Decline</button>
+                                </form>
+                            </div>
                             {% endif %}
                         </td>
                     </tr>

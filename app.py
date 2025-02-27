@@ -2,12 +2,14 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from config import Config
 from models import db  # Import db from models/__init__.py
+from models.transaction import Transaction
 from utils.fraud_detection import detect_fraud
 from utils.device_info import get_device_info
 import requests
 from werkzeug.exceptions import BadRequest
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
+import json
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -17,6 +19,20 @@ db.init_app(app)
 
 # Import models after db initialization
 from models.transaction import Transaction  
+
+# Add JSON filter for Jinja2
+@app.template_filter('fromjson')
+def fromjson_filter(value):
+    if not value:
+        return []
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return []
+
+# Create tables
+with app.app_context():
+    db.create_all()
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -31,13 +47,15 @@ def index():
             amount = data.get("amount")
 
             # Validate required fields
-            if not userid or not amount:
+            if not userid or amount is None:
                 raise BadRequest("Missing required fields: userid and amount")
 
             try:
                 amount = float(amount)
+                if amount <= 0:
+                    raise BadRequest("Amount must be greater than 0")
             except (TypeError, ValueError):
-                raise BadRequest("Invalid amount format")
+                raise BadRequest("Invalid amount format - must be a valid number")
 
             # Auto-detect device ID and location
             device_id = get_device_info(request)
@@ -47,16 +65,41 @@ def index():
             except requests.exceptions.RequestException:
                 location = "Unknown"
 
-            # Create and save transaction
-            transaction = Transaction(userid=userid, amount=amount, device_id=device_id, location=location)
-            db.session.add(transaction)
-            db.session.commit()
+            # Check for fraud before saving transaction
+            is_fraudulent, fraud_flags = detect_fraud(amount, location, userid)
 
-            # Check for fraud
-            is_fraudulent = detect_fraud(amount, location)
+            # Create transaction
+            transaction = Transaction(
+                userid=userid,
+                amount=amount,
+                device_id=device_id,
+                location=location,
+                is_fraudulent=is_fraudulent,
+                fraud_flags=fraud_flags
+            )
+
+            # Automatically approve if not fraudulent
+            if not is_fraudulent:
+                transaction.is_approved = True
+                transaction.approval_timestamp = datetime.now(timezone.utc)
+            
+            try:
+                db.session.add(transaction)
+                db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                print(f"Database error: {str(e)}")
+                return jsonify({
+                    "success": False,
+                    "error": "Failed to save transaction"
+                }), 500
+
             return jsonify({
                 "success": True,
-                "fraud_detected": is_fraudulent
+                "fraud_detected": is_fraudulent,
+                "is_approved": transaction.is_approved,
+                "fraud_flags": json.loads(fraud_flags) if fraud_flags else None,
+                "transaction_id": transaction.id
             })
 
         except BadRequest as e:
@@ -65,37 +108,44 @@ def index():
                 "error": str(e)
             }), 400
         except Exception as e:
+            print(f"Unexpected error: {str(e)}")
+            print(traceback.format_exc())
             db.session.rollback()
             return jsonify({
                 "success": False,
-                "error": "An unexpected error occurred"
+                "error": "An unexpected error occurred while processing your transaction"
             }), 500
 
     return render_template("index.html")
 
 @app.route("/admin")
 def admin():
-    """Admin dashboard showing all transactions and statistics"""
     transactions = Transaction.query.order_by(Transaction.timestamp.desc()).all()
-    
-    # Calculate statistics
     stats = {
-        "total": len(transactions),
-        "pending": sum(1 for t in transactions if not t.is_approved and not t.is_fraudulent),
-        "approved": sum(1 for t in transactions if t.is_approved),
-        "fraudulent": sum(1 for t in transactions if t.is_fraudulent)
+        "total": Transaction.query.count(),
+        "fraudulent": Transaction.query.filter_by(is_fraudulent=True).count(),
+        "approved": Transaction.query.filter_by(is_approved=True).count(),
+        "declined": Transaction.query.filter_by(is_declined=True).count(),
+        "pending": Transaction.query.filter_by(is_approved=False, is_declined=False).count()
     }
-    
     return render_template("admin.html", transactions=transactions, stats=stats)
 
 @app.route("/admin/approve/<int:transaction_id>", methods=["POST"])
 def admin_approve_transaction(transaction_id):
-    """Approve a transaction"""
     transaction = Transaction.query.get_or_404(transaction_id)
-    transaction.is_approved = True
-    transaction.approval_timestamp = datetime.utcnow()
-    db.session.commit()
-    return redirect(url_for("admin"))
+    if not transaction.is_approved and not transaction.is_declined:
+        transaction.is_approved = True
+        transaction.approval_timestamp = datetime.now(timezone.utc)
+        db.session.commit()
+    return redirect(url_for('admin'))
+
+@app.route("/admin/decline/<int:transaction_id>", methods=["POST"])
+def admin_decline_transaction(transaction_id):
+    transaction = Transaction.query.get_or_404(transaction_id)
+    if not transaction.is_approved and not transaction.is_declined:
+        transaction.is_declined = True
+        db.session.commit()
+    return redirect(url_for('admin'))
 
 @app.errorhandler(404)
 def not_found_error(error):
