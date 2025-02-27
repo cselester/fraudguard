@@ -1,11 +1,13 @@
 # Main Flask app
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect, url_for
 from config import Config
 from models import db  # Import db from models/__init__.py
 from utils.fraud_detection import detect_fraud
 from utils.device_info import get_device_info
 import requests
 from werkzeug.exceptions import BadRequest
+import traceback
+from datetime import datetime
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -70,6 +72,30 @@ def index():
             }), 500
 
     return render_template("index.html")
+
+@app.route("/admin")
+def admin():
+    """Admin dashboard showing all transactions and statistics"""
+    transactions = Transaction.query.order_by(Transaction.timestamp.desc()).all()
+    
+    # Calculate statistics
+    stats = {
+        "total": len(transactions),
+        "pending": sum(1 for t in transactions if not t.is_approved and not t.is_fraudulent),
+        "approved": sum(1 for t in transactions if t.is_approved),
+        "fraudulent": sum(1 for t in transactions if t.is_fraudulent)
+    }
+    
+    return render_template("admin.html", transactions=transactions, stats=stats)
+
+@app.route("/admin/approve/<int:transaction_id>", methods=["POST"])
+def admin_approve_transaction(transaction_id):
+    """Approve a transaction"""
+    transaction = Transaction.query.get_or_404(transaction_id)
+    transaction.is_approved = True
+    transaction.approval_timestamp = datetime.utcnow()
+    db.session.commit()
+    return redirect(url_for("admin"))
 
 @app.errorhandler(404)
 def not_found_error(error):
