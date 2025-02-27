@@ -1,10 +1,11 @@
 # Transaction model
 from models import db  # Import db from models/__init__.py
 from datetime import datetime, timezone, timedelta
+import secrets
 
 class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    userid = db.Column(db.String(50), nullable=False)
+    userid = db.Column(db.String(50), db.ForeignKey('user.userid'), nullable=False)
     amount = db.Column(db.Float, nullable=False)
     device_id = db.Column(db.String(50), nullable=False)
     location = db.Column(db.String(100), nullable=False)
@@ -15,9 +16,17 @@ class Transaction(db.Model):
     approval_timestamp = db.Column(db.DateTime, nullable=True)
     approval_notes = db.Column(db.Text, nullable=True)
     fraud_flags = db.Column(db.Text, nullable=True)  # Store reasons for flagging
+    approval_token = db.Column(db.String(100), unique=True, nullable=True)
+    token_expiry = db.Column(db.DateTime, nullable=True)
 
     def __repr__(self):
         return f'<Transaction {self.id}: ${self.amount} by {self.userid}>'
+
+    def generate_approval_token(self):
+        """Generate a unique token for transaction approval"""
+        self.approval_token = secrets.token_urlsafe(32)
+        self.token_expiry = datetime.now(timezone.utc) + timedelta(hours=24)
+        return self.approval_token
 
     @classmethod
     def get_user_recent_transactions(cls, userid, minutes=5):

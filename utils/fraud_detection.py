@@ -12,6 +12,7 @@ def detect_fraud(amount, location, userid):
     2. Amount 5x higher than user average
     3. Multiple locations within minutes
     4. Three declined transactions within 30 minutes
+    5. Too many rapid transactions (>3 in 5 minutes)
     """
     flags = []
     is_fraudulent = False
@@ -44,6 +45,12 @@ def detect_fraud(amount, location, userid):
     declined_count = Transaction.get_user_declined_count(userid, minutes=30)
     if declined_count >= 3:
         flags.append(f"Card declined {declined_count} times in the last 30 minutes")
+        is_fraudulent = True
+    
+    # Rule 5: Check for too many rapid transactions
+    recent_count = len(recent_transactions)
+    if recent_count >= 3:
+        flags.append(f"Too many transactions ({recent_count}) in the last 5 minutes")
         is_fraudulent = True
     
     # Location-based check (existing)

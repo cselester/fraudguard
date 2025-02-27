@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FraudGuard - Register</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">FraudGuard</a>
+        </div>
+    </nav>
+
+    <div class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h4 class="mb-0">Register User</h4>
+                    </div>
+                    <div class="card-body">
+                        <div id="status-message" class="alert" style="display: none;"></div>
+                        
+                        <form id="register-form">
+                            <div class="mb-3">
+                                <label for="username" class="form-label">Username</label>
+                                <input type="text" class="form-control" id="username" name="username" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="userid" class="form-label">User ID</label>
+                                <input type="text" class="form-control" id="userid" name="userid" required>
+                                <div class="form-text">This ID will be used for transactions</div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="email" class="form-label">Email</label>
+                                <input type="email" class="form-control" id="email" name="email" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="phone" class="form-label">Phone Number</label>
+                                <input type="tel" class="form-control" id="phone" name="phone" required>
+                                <div class="form-text">Include country code (e.g., +1 for US)</div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Register</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('register-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const statusMessage = document.getElementById('status-message');
+            statusMessage.style.display = 'none';
+            statusMessage.className = 'alert';
+
+            const formData = {
+                username: document.getElementById('username').value,
+                userid: document.getElementById('userid').value,
+                email: document.getElementById('email').value,
+                phone: document.getElementById('phone').value
+            };
+
+            fetch('/register', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(formData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                statusMessage.style.display = 'block';
+                
+                if (data.success) {
+                    statusMessage.classList.add('alert-success');
+                    statusMessage.innerHTML = 'Registration successful! You can now make transactions.';
+                    document.getElementById('register-form').reset();
+                } else {
+                    statusMessage.classList.add('alert-danger');
+                    statusMessage.innerHTML = `Error: ${data.error}`;
+                }
+            })
+            .catch(error => {
+                statusMessage.style.display = 'block';
+                statusMessage.classList.add('alert-danger');
+                statusMessage.innerHTML = 'An error occurred during registration.';
+                console.error('Error:', error);
+            });
+        });
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html> 

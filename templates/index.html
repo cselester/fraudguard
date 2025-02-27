@@ -28,6 +28,11 @@
             color: #721c24;
             border: 1px solid #f5c6cb;
         }
+        /* Disable pointer events during alert */
+        .processing {
+            pointer-events: none;
+            opacity: 0.7;
+        }
     </style>
 </head>
 
@@ -41,7 +46,7 @@
         </div>
     </nav>
 
-    <div class="container mt-5">
+    <div class="container mt-5" id="mainContent">
         <div class="row justify-content-center">
             <div class="col-md-6">
                 <div class="card">
@@ -72,62 +77,106 @@
     </div>
 
     <script>
-        document.getElementById('amount').addEventListener('input', function(e) {
-            const warning = document.getElementById('amount-warning');
-            warning.style.display = parseFloat(e.target.value) >= 10000 ? 'block' : 'none';
-        });
-
-        document.getElementById('transaction-form').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const statusMessage = document.getElementById('status-message');
-            statusMessage.style.display = 'none';
-            statusMessage.className = 'status-message';
-
-            const formData = {
-                userid: document.getElementById('userid').value,
-                amount: document.getElementById('amount').value
-            };
-
-            fetch('/', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(formData)
-            })
-            .then(response => response.json())
-            .then(data => {
-                statusMessage.style.display = 'block';
-                
-                if (data.success) {
-                    if (data.is_approved) {
-                        statusMessage.classList.add('success');
-                        statusMessage.innerHTML = `Transaction approved and processed successfully! Transaction ID: ${data.transaction_id}`;
-                    } else if (data.fraud_detected) {
-                        statusMessage.classList.add('danger');
-                        let message = `Transaction flagged for review.<br>Reason(s):<br>`;
-                        data.fraud_flags.forEach(flag => {
-                            message += `• ${flag}<br>`;
-                        });
-                        statusMessage.innerHTML = message;
-                    } else {
-                        statusMessage.classList.add('warning');
-                        statusMessage.innerHTML = 'Transaction is pending review.';
-                    }
-                    document.getElementById('transaction-form').reset();
-                } else {
-                    statusMessage.classList.add('danger');
-                    statusMessage.innerHTML = `Error: ${data.error}`;
-                }
-            })
-            .catch(error => {
-                statusMessage.style.display = 'block';
-                statusMessage.classList.add('danger');
-                statusMessage.innerHTML = 'An error occurred while processing the transaction.';
-                console.error('Error:', error);
+        // Navigation Control
+        (function() {
+            window.history.pushState(null, null, window.location.href);
+            window.addEventListener('popstate', () => {
+                window.history.pushState(null, null, window.location.href);
             });
-        });
+
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'F5' || 
+                    (e.ctrlKey && e.key === 'r') || 
+                    (e.altKey && e.key === 'Left') || 
+                    (e.altKey && e.key === 'Right') || 
+                    (e.key === 'Backspace' && !['INPUT', 'TEXTAREA'].includes(e.target.tagName))) {
+                    e.preventDefault();
+                }
+            });
+        })();
+
+        // Form Handling
+        (function() {
+            const form = document.getElementById('transaction-form');
+            const mainContent = document.getElementById('mainContent');
+            const statusMessage = document.getElementById('status-message');
+            const amountInput = document.getElementById('amount');
+            const amountWarning = document.getElementById('amount-warning');
+
+            // Amount warning
+            amountInput.addEventListener('input', (e) => {
+                amountWarning.style.display = parseFloat(e.target.value) >= 10000 ? 'block' : 'none';
+            });
+
+            // Form submission
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                mainContent.classList.add('processing');
+                statusMessage.style.display = 'none';
+                statusMessage.className = 'status-message';
+
+                try {
+                    const response = await fetch('/', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            userid: document.getElementById('userid').value,
+                            amount: amountInput.value
+                        })
+                    });
+
+                    const data = await response.json();
+                    statusMessage.style.display = 'block';
+
+                    if (data.success) {
+                        if (data.is_approved) {
+                            showSuccess(`Transaction approved and processed successfully! Transaction ID: ${data.transaction_id}`);
+                        } else if (data.fraud_detected) {
+                            showFraudAlert(data);
+                        } else {
+                            showWarning('Transaction is pending review.');
+                        }
+                        form.reset();
+                    } else {
+                        showError(data.error);
+                    }
+                } catch (error) {
+                    showError('An error occurred while processing the transaction.');
+                    console.error('Error:', error);
+                }
+
+                mainContent.classList.remove('processing');
+            });
+
+            // Helper functions
+            function showSuccess(message) {
+                statusMessage.className = 'status-message success';
+                statusMessage.innerHTML = message;
+            }
+
+            function showWarning(message) {
+                statusMessage.className = 'status-message warning';
+                statusMessage.innerHTML = message;
+            }
+
+            function showError(message) {
+                statusMessage.className = 'status-message danger';
+                statusMessage.innerHTML = message;
+            }
+
+            function showFraudAlert(data) {
+                statusMessage.className = 'status-message danger';
+                let message = `Transaction flagged for review.<br>Reason(s):<br>`;
+                data.fraud_flags.forEach(flag => {
+                    message += `• ${flag}<br>`;
+                });
+                statusMessage.innerHTML = message;
+
+                if (confirm("🚨 Suspicious Transaction Detected!\n\nFor your security, we've sent an approval link via SMS and email.\n\nClick OK to go to the approval page, or Cancel to stay on this page.")) {
+                    window.location.href = `/approve/${data.approval_token}`;
+                }
+            }
+        })();
     </script>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
