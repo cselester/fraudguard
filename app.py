@@ -16,13 +16,16 @@ import json
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# Initialize database after app is created
+# Initialize database
 db.init_app(app)
 
-# Import models after db initialization
-from models.transaction import Transaction  
+# Create tables
+with app.app_context():
+    # Drop all tables and recreate them
+    db.drop_all()
+    db.create_all()
+    print("Database tables created successfully!")
 
-# Add JSON filter for Jinja2
 @app.template_filter('fromjson')
 def fromjson_filter(value):
     if not value:
@@ -31,10 +34,6 @@ def fromjson_filter(value):
         return json.loads(value)
     except json.JSONDecodeError:
         return []
-
-# Create tables
-with app.app_context():
-    db.create_all()
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -67,14 +66,17 @@ def register():
                 })
             except Exception as e:
                 db.session.rollback()
+                print(f"Database error during registration: {str(e)}")
                 return jsonify({
                     "success": False,
                     "error": "User registration failed. Email or phone might already be registered."
                 }), 400
 
         except BadRequest as e:
+            print(f"Bad request during registration: {str(e)}")
             return jsonify({"success": False, "error": str(e)}), 400
         except Exception as e:
+            print(f"Unexpected error during registration: {str(e)}")
             return jsonify({"success": False, "error": "Registration failed"}), 500
 
     return render_template("register.html")
