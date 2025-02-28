@@ -19,12 +19,14 @@ app.config.from_object(Config)
 # Initialize database
 db.init_app(app)
 
-# Create tables
+# Create tables if they don't exist
 with app.app_context():
-    # Drop all tables and recreate them
-    db.drop_all()
-    db.create_all()
-    print("Database tables created successfully!")
+    try:
+        # Only create tables if they don't exist
+        db.create_all()
+        print("Database tables verified/created successfully!")
+    except Exception as e:
+        print(f"Error initializing database: {str(e)}")
 
 @app.template_filter('fromjson')
 def fromjson_filter(value):
